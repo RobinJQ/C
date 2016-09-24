@@ -33,7 +33,6 @@ typedef struct line_t {
 	pthread_cond_t costumers_cond;
 	pthread_mutex_t lock;
 	pthread_mutex_t costumers_mutex[NR_COSTUMERS];
-	pthread_mutex_t cashier_mutex;
 	pthread_mutex_t checkout_mutex[NR_COSTUMERS];
 } line_t;
 
@@ -200,15 +199,15 @@ void* Costumer(void* arg) {
 		status = pthread_join(clerks[i], NULL);
 		assert(status == 0);
 	}
-	D(printf("Costumer %d takes line number..\n", arg_t->id));
 	int lineNumber = getNextLineNumber();
+	D(printf("Costumer %d takes line number %d\n", arg_t->id, lineNumber));
+	pthread_mutex_lock(&line.costumers_mutex[lineNumber]);
 	pthread_cond_signal(&line.costumerInLine);
-	pthread_mutex_lock(&line.costumers_mutex[arg_t->id]);
 	while (!lineNumberCheckedOut(lineNumber)) {
 		pthread_cond_wait(&line.costumers_cond,
-						  &line.costumers_mutex[arg_t->id]);
+						  &line.costumers_mutex[lineNumber]);
 	}
-	pthread_mutex_unlock(&line.costumers_mutex[arg_t->id]);
+	pthread_mutex_unlock(&line.costumers_mutex[lineNumber]);
 	D(printf("Costumer %d checked out. Line number: %d\n", arg_t->id, lineNumber));
 	return NULL;
 }
@@ -216,15 +215,14 @@ void* Costumer(void* arg) {
 void* Cashier(void* arg) {
 	for (int i = 0; i < NR_COSTUMERS; ++i)
 	{
-		pthread_mutex_lock(&line.cashier_mutex);
+		pthread_mutex_lock(&line.costumers_mutex[i]);
 		while (getCurrentLineNumber() < i || (i == 0 && getCurrentLineNumber() == 0)) {
 			pthread_cond_wait(&line.costumerInLine,
-							  &line.cashier_mutex);
+							  &line.costumers_mutex[i]);
 		}
 		Checkout(i);
 		pthread_cond_broadcast(&line.costumers_cond);
-		//sleep(1);
-		pthread_mutex_unlock(&line.cashier_mutex);
+		pthread_mutex_unlock(&line.costumers_mutex[i]);
 	}
 	return NULL;
 }
@@ -246,9 +244,12 @@ void makeCone() {
 };
 
 int getNextLineNumber() {
-	pthread_mutex_lock(&line.lock);
+	int status;
+	status = pthread_mutex_lock(&line.lock);
+	assert(status == 0);
 	int lineNumber = line.currentLineNumber++;
-	pthread_mutex_unlock(&line.lock);
+	status = pthread_mutex_unlock(&line.lock);
+	assert(status == 0);
 	return lineNumber;
 }
 
@@ -263,7 +264,7 @@ void Checkout(int lineNumber) {
 	pthread_mutex_lock(&line.checkout_mutex[lineNumber]);
 	line.costumers[lineNumber] = 1;
 	pthread_mutex_unlock(&line.checkout_mutex[lineNumber]);
-	D(printf("%s%d\n", "Checking out: ",i));
+	D(printf("%s%d\n", "Checking out: ",lineNumber));
 }
 
 void initInspector() {
@@ -287,5 +288,4 @@ void initLine() {
 		pthread_mutex_init(&line.checkout_mutex[i], NULL);
 	}
 	pthread_mutex_init(&line.lock, NULL);
-	pthread_mutex_init(&line.cashier_mutex, NULL);
 }

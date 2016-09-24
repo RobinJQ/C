@@ -6,59 +6,28 @@
 #include <errno.h>
 
 #define handle_error_en(en, msg) \
-        do { errno = en; perror(msg); exit(EXIT_FAILURE); } while (0)
+        {do { errno = en; perror(msg); exit(EXIT_FAILURE); } while (0);}
+#define status_check(stat) ((stat != 0) ? (handle_error_en(stat, "status error")) : ((void)0))
 
-static void 
-cleanup_handler(void *arg)
+static void* thread_start(void *arg)
 {
-    printf("Called clean-up handler, arg = %d\n",*(int*)arg);
-    free(arg);
-}
-
-static void *
-thread_start(void *arg)
-{
-   	printf("New thread started\n");
-	pthread_cancel(pthread_self()); // CANCEL on next cancellation point
-   	int* a = (int*)malloc(sizeof(int));
-   	assert(a != NULL);
-
-   	pthread_cleanup_push(cleanup_handler, a); // first handler
-   	*a = 1; 
-   	int* b = (int*)malloc(sizeof(int));
-   	assert(b != NULL);
-   	pthread_cleanup_push(cleanup_handler, b); // second handler
-   	*b = 2;
-   	pthread_testcancel();  // cancellation point 
-   	pthread_cleanup_pop(1); // pop second handler
-   	pthread_cleanup_pop(1); // pop first handler
-
+	printf("%s\n", "thread working..");
+	sleep(1);
     return NULL;
 }
 
 int main(int argc, char const *argv[])
 {
-	int ret;
-	void* value;
+	int status;
 	pthread_t thread;
 
-	ret = pthread_create(&thread,
-						 NULL,
-						 thread_start,
-						 NULL);
-	assert(ret == 0);
-	printf("%s\n", "thread fired");
-	ret = pthread_join(thread, &value);
-	if (ret != 0)
-	{
-		handle_error_en(ret, "pthread_join");
-	}
-	if (value == PTHREAD_CANCELED)
-	{
-		printf("%s\n", "thread cancled");
-	} else {
-		printf("%s\n", "thread terminated normally");
-	}
+	status = pthread_create(&thread,
+						    NULL,
+						    thread_start,
+						    NULL);
+	status_check(status);
+	status = pthread_join(thread, NULL);
+	status_check(status);
 	printf("%s\n", "exit program..");
 	return 0;
 }
